@@ -1,0 +1,17 @@
+{
+  "name": "talks-campus-token",
+  "version": "1.0.0",
+  "description": "Student Pass + campus token for IE",
+  "scripts": {
+    "compile": "node scripts/compile.js",
+    "demo": "python demo.py",
+    "test": "python -m pytest -q"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "solc": "^0.8.24"
+  }
+}

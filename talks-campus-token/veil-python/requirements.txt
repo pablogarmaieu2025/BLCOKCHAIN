@@ -1,0 +1,6 @@
+numpy>=1.24
+cryptography>=41
+pytest>=7
+# Optional:
+# streamlit>=1.32        # web version (app.py)
+# face_recognition>=1.3  # real photos instead of simulated templates
