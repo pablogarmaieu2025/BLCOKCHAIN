@@ -1,83 +1,64 @@
-"""End-to-end demo on a local, in-memory blockchain (no internet, no real money).
-
-Run:  python demo.py
-"""
+"""Unified synthetic demo. No real biometrics, funds, physical door or public deployment."""
 from web3 import EthereumTesterProvider, Web3
+from gateway import CampusChain, Door, Roles, StudentRegistry
+from veil import TeammateFaceMatcher, templates
+import numpy as np
 
-from gateway import CampusChain, DemoFaceMatcher, Door, Roles, StudentRegistry
+class DemoCampus:
+    def __init__(self):
+        self.w3 = Web3(EthereumTesterProvider())
+        self.admin, self.gate, self.sara, self.marco, self.lucas, self.outsider, self.recovery = self.w3.eth.accounts[:7]
+        self.chain = CampusChain.deploy(self.w3, Roles(self.admin, self.gate))
+        self.registry = StudentRegistry()
+        self.matcher = TeammateFaceMatcher()
+        self.rng = np.random.default_rng(42)
+        self.raw = {}
+        self.door = Door(self.chain, self.matcher, self.registry)
+        for sid, wallet, seed in [("sara", self.sara, 11), ("marco", self.marco, 29), ("lucas", self.lucas, 47)]:
+            self.enroll(sid, wallet, seed)
+        self.events = ["SG debate", "Climate talk", "Hackathon"]
+        for event in self.events:
+            self.chain.create_event(event, 100)
+        self.perk = "Priority talks ticket"
+        self.chain.create_perk(self.perk, 200, 50)
 
+    def enroll(self, sid, wallet, seed):
+        raw = templates.simulated_template(seed)
+        record = self.registry.register(sid, wallet)
+        self.chain.issue_pass(wallet, record.key)
+        self.matcher.enroll(sid, raw)
+        self.raw[sid] = raw
 
-def step(title):
-    print(f"\n=== {title} ===")
+    def scan(self, sid, event=None):
+        raw = self.raw[sid] if sid in self.raw else templates.simulated_template(999)
+        return self.door.scan(templates.live_capture(raw, rng=self.rng), event)
 
-
-def show(result):
-    mark = "OPEN  " if result.granted else "DENIED"
-    extra = f" (+{result.tokens_earned} tokens)" if result.tokens_earned else ""
-    print(f"  [{mark}] {result.student_id or 'unknown'}: {result.reason}{extra}")
-
+    def revoke(self, sid):
+        # Two independent simulated state stores: no atomic cross-store transaction.
+        # Revoke the EVM credential first so rewards are denied even if step two fails.
+        self.chain.revoke_pass(self.registry.wallet_of(sid))
+        self.matcher.revoke(sid)
 
 def main():
-    w3 = Web3(EthereumTesterProvider())
-    ie, gate, sara, marco, lucas, outsider = w3.eth.accounts[:6]
-
-    step("1. IE deploys the system")
-    chain = CampusChain.deploy(w3, Roles(admin=ie, gate=gate))
-    for name, addr in chain.addresses().items():
-        print(f"  {name:<13} {addr}")
-
-    step("2. IE verifies three students and issues their passes")
-    matcher, registry = DemoFaceMatcher(), StudentRegistry()
-    for sid, wallet in [("sara", sara), ("marco", marco), ("lucas", lucas)]:
-        matcher.enroll(sid, f"{sid}-enrolment-photo")  # face stays local
-        registry.register(sid, wallet)                   # off-chain, kept by IE
-        chain.issue_pass(wallet)                         # on-chain: wallet only
-        print(f"  pass issued to {sid} ({wallet[:10]}...)")
-
-    door = Door(chain, matcher, registry)
-
-    step("3. Students scan in at the campus door")
-    show(door.scan("sara-morning-photo"))
-    show(door.scan("stranger-photo"))
-
-    step("4. Student government runs events; check-ins earn tokens")
-    for event in ["SG debate", "Climate talk", "Hackathon"]:
-        chain.create_event(event, reward=100)
-    show(door.scan("sara-debate", event="SG debate"))
-    show(door.scan("sara-again", event="SG debate"))  # no double reward
-    show(door.scan("sara-climate", event="Climate talk"))
-    show(door.scan("sara-hack", event="Hackathon"))
-    show(door.scan("marco-debate", event="SG debate"))
-    print(f"  balances: sara={chain.balance(sara)}, marco={chain.balance(marco)}")
-    print(f"  reputation (check-ins): sara={chain.reputation(sara)}, marco={chain.reputation(marco)}")
-
-    step("5. talks. offers a scarce perk: early access to the exam-week party")
-    perk = "Exam-week party early access"
-    chain.create_perk(perk, price=200, supply=50)
-    chain.unlock_perk(perk, sara)
-    print(f"  sara unlocked it: {chain.has_perk(perk, sara)}; sara now has {chain.balance(sara)} tokens")
-    print(f"  spots left: {chain.perk_remaining(perk)} of 50")
-    try:
-        chain.unlock_perk(perk, marco)
-    except Exception:
-        print("  marco tried with 100 tokens: refused (not enough tokens)")
-
-    step("6. Tokens move between students, but never outside the network")
-    chain.send(sara, marco, 50)
-    print(f"  sara sent 50 to marco: sara={chain.balance(sara)}, marco={chain.balance(marco)}")
-    try:
-        chain.send(sara, outsider, 10)
-    except Exception:
-        print("  sara tried to send 10 to a non-student wallet: refused (closed network)")
-
-    step("7. Lucas loses his phone; IE revokes his pass")
-    show(door.scan("lucas-photo"))
-    chain.revoke_pass(lucas)
-    show(door.scan("lucas-photo"))
-
-    step("8. Anyone can verify the supply")
-    print(f"  minted 400, burned 200 -> total supply on-chain: {chain.total_supply()}")
-
+    campus = DemoCampus()
+    chain = campus.chain
+    print("Veil x talks V2 | synthetic vectors | local EVM")
+    print("Contracts:", chain.addresses())
+    for sid, event in [("unknown", None), ("sara", None), ("sara", "SG debate"),
+                       ("sara", "SG debate"), ("sara", "Climate talk"), ("sara", "Hackathon"),
+                       ("marco", "SG debate")]:
+        result = campus.scan(sid, event)
+        print(sid, event, result)
+    receipt = chain.unlock_perk(campus.perk, campus.sara)
+    print("Redemption transaction:", receipt.transactionHash.hex())
+    print("Sara balance:", chain.balance(campus.sara), "reputation:", chain.reputation(campus.sara))
+    print("Remaining perks:", chain.perk_remaining(campus.perk))
+    campus.revoke("lucas")
+    print("Revoked student:", campus.scan("lucas"))
+    print("Total supply:", chain.total_supply(), "lifetime minted:", chain.token.functions.lifetimeMinted().call())
+    assert chain.total_supply() == 200
+    assert chain.balance(campus.sara) == 100
+    assert chain.perk_remaining(campus.perk) == 49
 
 if __name__ == "__main__":
     main()

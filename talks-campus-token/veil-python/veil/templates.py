@@ -6,9 +6,8 @@ distance between vectors, never a hash.
 
 Protection uses a salted random projection (a "cancellable biometric"):
     protected = M(salt) @ template
-The projection is one-way (64 numbers from 128, so the face can't be rebuilt)
-and depends on a secret salt. Change the salt and every old protected copy
-stops matching, without re-scanning the face.
+The projection is dimension reducing, not proven cryptographically one-way
+and depends on a secret salt. Change the salt to derive a different protected template; security requires further validation.
 """
 
 from __future__ import annotations
@@ -77,7 +76,10 @@ def _projection_matrix(salt: bytes) -> np.ndarray:
 
 def protect(template: np.ndarray, salt: bytes) -> np.ndarray:
     """Turn a raw template into a cancellable, one-way protected template."""
-    return _projection_matrix(salt) @ np.asarray(template, dtype=float)
+    vector = np.asarray(template, dtype=float)
+    if vector.shape != (RAW_DIM,) or not np.all(np.isfinite(vector)):
+        raise ValueError("Invalid embedding")
+    return _projection_matrix(salt) @ vector
 
 
 def distance(a: np.ndarray, b: np.ndarray) -> float:
