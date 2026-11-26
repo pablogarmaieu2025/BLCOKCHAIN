@@ -3,3 +3,10 @@ build/
 __pycache__/
 .pytest_cache/
 .env
+.venv/
+*.egg-info/
+
+.env.*
+!.env.example
+deployments/local-practice.json
+results/

@@ -88,6 +88,8 @@ class Veil:
             proof = self.log_event(granted, gate) if log else ""
             return GateResult(granted, d, templates.similarity_percent(d), proof, reason)
 
+        if not self.ledger.verify_chain():
+            return finish(False, float("inf"), "credential ledger integrity failure")
         committed = self.ledger.active_commitment(wallet.did)
         if committed is None:
             return finish(False, float("inf"), "face key revoked or never enrolled")
@@ -137,10 +139,11 @@ class Veil:
 
     # ------------------------------------------------------------ breach
     def breach_report(self) -> list[str]:
-        """Everything an attacker gets by stealing the whole campus server."""
+        """Illustrative isolated-campus-share scenario, not a penetration test."""
         loot = [f"{b.fields['commitment'][:10]}… commitment hash"
                 for b in self.ledger.blocks if b.kind == "ENROL"]
         loot.append(f"{len(self.campus_hsm)} campus key shares (1 of 3 each, can't decrypt alone)")
         loot.append(f"{sum(b.kind in ('ACCESS', 'DENY') for b in self.ledger.blocks)} access events with pseudonymous IDs")
-        loot.append("0 photos · 0 raw templates · 0 names")
+        loot.append("Intended separated storage: no photos, raw templates or names in ledger")
+        loot.append("Actual simulation: campus and recovery shares coexist in memory; whole-process compromise defeats separation.")
         return loot

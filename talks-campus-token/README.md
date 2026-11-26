@@ -1,116 +1,114 @@
-# talks. Campus Token
+# Veil × talks. V2.1
 
-One verified **Student Pass** and one **campus token** for IE University.
-The pass gets you through the door and checks you in at events; every check-in
-earns tokens; tokens buy scarce perks such as early access to a sold-out
-talks. event. Faces never go on the blockchain.
+A classroom prototype for authenticated campus participation and programmable
+rewards. Original V1 remains on main. This branch integrates both team prototypes.
 
-Status (Nov 2026): first working version. Runs on a local test blockchain.
-Not yet deployed to a public test network. Face recognition is a stand-in
-until the biometric code is plugged in.
+## Run locally (Python 3.12, Node 20 recommended)
 
----
+From this directory:
 
-## Quick start (macOS, conda)
-
-```bash
-conda create -n talks-token python=3.12 nodejs -y
-conda activate talks-token
-npm install                         # Solidity compiler + OpenZeppelin
-pip install -r requirements.txt     # web3 + local test chain + pytest
-npm run compile                     # contracts/ -> build/*.json
-python demo.py                      # full story, end to end
-python -m pytest -q                 # 16 tests
+```sh
+python -m venv .venv
+source .venv/bin/activate
+npm ci
+python -m pip install -r requirements.txt
+npm run compile
+python demo.py
+python -m pytest -q tests veil-python/tests
+streamlit run app.py
 ```
 
-## What's in the repo
+Windows: activate .venv using the platform-specific activation script.
+The app is a trusted, ephemeral classroom simulation with synthetic identities.
+Do not upload faces or use real funds. No public deployment is claimed.
 
-| Path | What it is |
-| --- | --- |
-| `contracts/StudentPass.sol` | One non-transferable pass per verified student. Issue, revoke, `isValid`. No personal or biometric data. |
-| `contracts/CampusToken.sol` | The token (`TALK`, whole units). Only wallets with a valid pass can receive it (closed network). |
-| `contracts/EventCheckIn.sol` | Organisers create events; gates check students in once per event; pays the reward and counts reputation. |
-| `contracts/Perks.sol` | Scarce perks with a public supply. `unlock` burns the price. |
-| `gateway/chain.py` | Python wrapper around the four contracts. The only file that talks to web3. |
-| `gateway/identity.py` | `FaceMatcher` interface + `DemoFaceMatcher` stand-in. **The biometric plug-in point.** |
-| `gateway/teammate_face_matcher.py` | Template for the real face recognition code. |
-| `gateway/registry.py` | Student id → wallet. Off-chain, kept by IE. |
-| `gateway/door.py` | The door: face → student → wallet → pass check → tokens. |
-| `demo.py` | The whole story on a local chain. |
-| `tests/test_system.py` | 16 tests: every rule and every refusal. |
+## Classroom walkthrough
 
-## How it fits together
+The CLI and Streamlit each start their own fresh local chain. In the app, open
+Event scanner, select Sara and SG debate, then Authenticate and check in (100 TALK).
+Repeat the same event (0 extra), then scan Climate talk (200 total). Open Student
+and redeem the priority ticket (0 balance, 49 remaining). Evidence shows 200 minted,
+200 burned and 0 outstanding if no other rewards were issued. In Administrator,
+revoke Sara and attempt another scan: no reward. Reset clears this local session.
 
-```
-  camera image
-      |
-      v
-  FaceMatcher.identify()        LOCAL device only (templates never leave it)
-      |  student id
-      v
-  StudentRegistry.wallet_of()   OFF-chain, kept by IE
-      |  wallet address
-      v
-  StudentPass.isValid()         ON-chain  -> door opens or stays shut
-      |
-      v
-  EventCheckIn.checkIn()        ON-chain  -> +reward tokens, +1 reputation
-      |
-      v
-  Perks.unlock()                ON-chain  -> tokens burned, perk recorded
-```
+## Architecture
 
-Roles (permissions enforced by the contracts):
+Veil synthetic vector -> protected template comparison -> local student registry
+-> StudentPass eligibility -> event-scoped authorized gate -> EventCheckIn ->
+TALK issuance and reputation -> Perks redemption and burn.
 
-| Role | Who | Can |
-| --- | --- | --- |
-| Issuer / admin | IE | Issue and revoke passes, create events and perks |
-| Gate | Door / event scanner device | Check students in (nothing else) |
-| EventCheckIn contract | — | Mint tokens (nothing else can) |
-| Perks contract | — | Burn tokens when a perk is unlocked |
-| Student | Pass holder | Send tokens to other students, unlock perks |
+Four Solidity contracts implement application state. Veil's separate HMAC-linked
+Python ledger simulates biometric credential commitments; it is not a real
+distributed network and no cross-chain bridge is needed. The local EVM is also
+a test environment. An Ethereum signing account is distinct from a Veil wallet.
 
-## Merging the face recognition (for the biometric teammate)
+## Files
 
-The door needs exactly one answer from your code: **"which student is this?"**
+- contracts/: StudentPass, CampusToken, EventCheckIn, Perks.
+- gateway/: registrar, transaction wrapper and door. DemoFaceMatcher is a unit test double only.
+- veil-python/veil/: the biometric group's packaged experimental implementation.
+- demo.py: integrated CLI entry point.
+- gateway/demo_campus.py: uniquely named shared synthetic campus fixture.
+- app.py: integrated Student, Event scanner, Administrator and Evidence tabs.
+- tests/: contract and integrated regression suites.
+- veil-python/tests/: biometric and simulated ledger tests.
+- scripts/deploy.py: signed local rehearsal, optional explicit testnet deployment, seeding and public manifest.
+- scripts/calibration.py: synthetic random-projection experiment.
+- docs/BIOMETRIC_CALIBRATION.md and docs/CONTRIBUTIONS.md: mathematical analysis and provenance.
+- docs/TOKENOMICS.md and docs/THREAT_MODEL.md: design and explicit limitations.
 
-1. Open `gateway/teammate_face_matcher.py` and fill in two methods:
-   - `enroll(student_id, image)`: store the face template **locally**.
-   - `identify(image)`: return the matching `student_id`, or `None`.
-2. Use **face embeddings and a distance threshold**, not hashes. Two photos of
-   the same face never produce the same hash, so hash comparison always fails.
-3. Swap it in: `Door(chain, TeammateFaceMatcher(), registry)` instead of
-   `DemoFaceMatcher()`. Nothing else changes.
-4. Add a test in `tests/` with two photos of the same person and one of
-   someone else.
+## Signed deployment rehearsal (no public transactions)
 
-Rules: never write images or templates to the chain, the registry or any server.
+    npm run compile
+    python scripts/deploy.py --local --smoke
+    python scripts/calibration.py
+    python -m pytest -q tests veil-python/tests
 
-## Known future problems (most important first)
+The rehearsal generates three distinct disposable local signing keys, deploys
+and checks roles, seeds two events and a perk, runs Veil matching and check-ins,
+rejects duplicate rewards and redeems a perk. Local manifest addresses are
+ephemeral, not explorer links. It does not reuse the Streamlit chain.
 
-1. **Face matching should move to the phone.** Today it runs on the door laptop.
-   The target design: the phone matches the face and signs the door's challenge
-   (like a passkey), so no device but the student's own ever holds a template.
-2. **Biometrics are legally high-risk in Spain.** The AEPD treats biometric access
-   control as high-risk processing of special-category data; a real rollout needs
-   a data protection impact assessment. For the class: volunteers only, with consent.
-3. **Photo spoofing.** A simple matcher can be fooled by a printed photo. Needs
-   liveness detection before any real use.
-4. **Gas fees.** Students need a little test currency to unlock perks. Fix: the
-   project pays fees for them (account abstraction / paymaster on Base).
-5. **Gate key security.** If a door's key is stolen, it could check in any pass
-   holder. Limits today: once per event, only active events. Later: one key per
-   device, quick revocation.
-6. **Attendance is visible on-chain.** `CheckedIn` events show that a wallet
-   attended an event. Wallets aren't names, but patterns can identify people.
-   Later: hide event ids or use zero-knowledge proofs.
-7. **IE's admin key controls everything.** Later: a multisig shared by IE and
-   student government.
-8. **talks. is not our app.** Real integration and any pilot need the founder's permission.
+## Public Base Sepolia (optional, not executed)
 
-## Next steps
+Use only disposable test wallets, funded with free test ETH. Copy .env.example
+to .env locally and set separate TESTNET_ADMIN_KEY and TESTNET_GATE_KEY
+(and TESTNET_STUDENT_KEY for --smoke). Never commit or share keys or use real
+wallets. BASE_SEPOLIA_RPC_URL defaults to https://sepolia.base.org. Confirm that
+you have sufficient test ETH for fees. Run the local rehearsal first.
 
-- [ ] Deploy to Base Sepolia test network (`CampusChain.connect` is ready for it)
-- [ ] Plug in the real face matcher (see above)
-- [ ] Simple web page for students: balance, perks, unlock button
-- [ ] Live class demo: classmates scan in, earn and spend
+    python scripts/deploy.py --base-sepolia --seed
+
+Optional --smoke also executes synthetic check-ins and redemption on the testnet.
+No public write occurs without the explicit --base-sepolia flag. A manifest
+records addresses, deployment/setup receipts, compiler version, constructor
+arguments and explorer links. A public manifest must be archived before another
+deployment. If a deployment fails before a manifest exists, inspect account
+transaction history before retrying; deployment/setup transactions are not atomic.
+
+For each deployed contract, open its BaseScan address and use Verify & Publish
+with Solidity Standard JSON Input, the exact build/compiler.txt version and
+build/standard-input.json, the manifest's fully qualified source and encoded
+constructor arguments if requested. The compiler exports all dependency sources
+and checks that recompiling the input reproduces creation bytecode. Preserve
+the exact artifacts used for deployment (manifest includes SHA-256 of JSON).
+Explorer verification is manual and separate from successful deployment.
+The UI remains a local simulation, not a testnet frontend.
+
+## Course defense
+
+Session 2–3: authorization, state transitions, public vs permissioned applications,
+oracle trust, explorer evidence and finality. Session 4: utility, reward, supply,
+sources/sinks, distribution, farming and token necessity. Session 7: custody and
+recovery; Shamir is not multisig. Session 8: privacy and regulatory uncertainty.
+Sessions 10–12: shared institutional state, protocol-market fit, and admin governance.
+Compare with SQL and ordinary points. Do not claim decentralization or biometric
+security solely because blockchain/encryption are used.
+
+## Status and acknowledgement
+
+V2.1 builds on V1, the tested V2 and the teammate's independent merge.
+See docs/CONTRIBUTIONS.md for provenance and AI-assistance disclosure.
+Students must inspect, run, understand, verify and acknowledge AI assistance per
+the course syllabus. See the threat model before making presentation claims.
+No real campus partnership, biometric performance or public deployment established.

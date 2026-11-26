@@ -74,7 +74,7 @@ def test_pass_cannot_be_transferred(env):
 def test_only_issuer_can_issue(env):
     _, chain, *_, a, _b, outsider = env
     with pytest.raises(REVERT_ERRORS):
-        chain.pass_.functions.issue(outsider).transact({"from": a})
+        chain.pass_.functions.issue(outsider, Web3.keccak(text="outsider")).transact({"from": a})
 
 
 def test_revoked_pass_is_invalid(env):
@@ -190,3 +190,72 @@ def test_door_flow(env):
 
     chain.revoke_pass(a)
     assert door.scan("sara-4").reason == "pass missing or revoked"
+
+
+# V2 regression tests
+def test_event_and_perk_ids_immutable(env):
+    _, chain, *_, a, b, _o = env
+    chain.create_event("debate", 300)
+    chain.check_in("debate", a)
+    with reverts("EventExists()"):
+        chain.create_event("debate", 999)
+    chain.create_perk("seat", 100, 1)
+    chain.unlock_perk("seat", a)
+    with reverts("PerkExists()"):
+        chain.create_perk("seat", 100, 1)
+    assert chain.perk_remaining("seat") == 0
+
+def test_recovery_preserves_subject_and_supply(env):
+    w3, chain, *_, a, b, _o = env
+    new = w3.eth.accounts[6]
+    chain.create_event("debate", 300)
+    chain.check_in("debate", a)
+    chain.create_perk("seat", 100, 3)
+    chain.unlock_perk("seat", a)
+    key = chain.pass_.functions.studentKey(a).call()
+    with reverts("StudentAlreadyRegistered()"):
+        chain.issue_pass(new, key)
+    chain.replace_pass(a, new)
+    assert not chain.is_valid(a) and chain.is_valid(new)
+    assert chain.reputation(new) == 1 and chain.has_perk("seat", new)
+    with reverts("AlreadyCheckedIn(bytes32,address)"):
+        chain.check_in("debate", new)
+    with reverts("AlreadyOwned(bytes32,address)"):
+        chain.unlock_perk("seat", new)
+    with reverts("NotAStudent(address)"):
+        chain.send(a, b, 1)
+    chain.recover_balance(a, new)
+    assert chain.balance(a) == 0 and chain.balance(new) == 200
+    assert chain.total_supply() == 200
+    assert chain.token.functions.lifetimeMinted().call() == 300
+
+def test_event_gate_scope_and_capacity(env):
+    w3, chain, ie, gate, a, b, _o = env
+    other_gate = w3.eth.accounts[7]
+    role = chain.checkin.functions.GATE_ROLE().call()
+    chain._tx(chain.checkin.functions.grantRole(role, other_gate), ie)
+    chain.create_event("limited", 100, capacity=1)
+    with reverts("GateNotAuthorized()"):
+        chain.checkin.functions.checkIn(Web3.keccak(text="limited"), a).transact({"from": other_gate})
+    chain.check_in("limited", a)
+    with reverts("EventFull()"):
+        chain.check_in("limited", b)
+    assert chain.total_supply() == 100
+
+def test_issuance_limit_and_expiry(env):
+    w3, chain, *_, a, _b, _o = env
+    with reverts("InvalidEvent()"):
+        chain.create_event("too much", 1001)
+    chain.create_event("short", 100, duration=30)
+    w3.provider.ethereum_tester.time_travel(w3.eth.get_block("latest")["timestamp"] + 40)
+    with reverts("EventNotActive(bytes32)"):
+        chain.check_in("short", a)
+
+def test_recovery_cannot_move_unrelated_balance(env):
+    _, chain, *_, a, b, _o = env
+    chain.create_event("debate", 100)
+    chain.check_in("debate", a)
+    chain.revoke_pass(a)
+    with reverts("InvalidRecovery()"):
+        chain.recover_balance(a, b)
+    assert chain.balance(a) == 100

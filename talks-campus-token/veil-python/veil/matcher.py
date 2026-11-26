@@ -39,10 +39,14 @@ class TeammateFaceMatcher:
         return np.asarray(image, dtype=float)
 
     def enroll(self, student_id: str, image) -> None:
+        if student_id in self._wallets:
+            raise ValueError("Already enrolled")
         self._wallets[student_id] = self.veil.enroll(student_id, self._to_template(image))
 
     def identify(self, image) -> str | None:
         live = self._to_template(image)
+        if not np.all(np.isfinite(live)) or live.shape != (templates.RAW_DIM,):
+            return None
         best_id, best_d = None, float("inf")
         for student_id, wallet in self._wallets.items():
             result = self.veil.verify(wallet, live, self.gate, log=False)

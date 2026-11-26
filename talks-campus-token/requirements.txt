@@ -1,2 +1,6 @@
 web3[tester]>=7,<8
-pytest>=8
+pytest>=8,<9
+numpy>=1.24,<3
+cryptography>=41
+streamlit>=1.32,<2
+-e ./veil-python
