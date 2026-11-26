@@ -3,6 +3,7 @@ on:
   push:
     branches: [veil-talks-v2]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -24,4 +25,6 @@ jobs:
       - run: npm run compile
       - run: python -m pytest -q tests veil-python/tests
       - run: python demo.py
-      - run: python -m compileall -q app.py scripts/testnet.py
+      - run: python scripts/deploy.py --local --smoke
+      - run: python scripts/calibration.py
+      - run: python -m compileall -q app.py scripts

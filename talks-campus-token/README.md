@@ -1,4 +1,4 @@
-# Veil × talks. V2
+# Veil × talks. V2.1
 
 A classroom prototype for authenticated campus participation and programmable
 rewards. Original V1 remains on main. This branch integrates both team prototypes.
@@ -52,18 +52,48 @@ a test environment. An Ethereum signing account is distinct from a Veil wallet.
 - app.py: integrated Student, Event scanner, Administrator and Evidence tabs.
 - tests/: contract and integrated regression suites.
 - veil-python/tests/: biometric and simulated ledger tests.
-- scripts/testnet.py: deployment preparation, not a deployment record.
+- scripts/deploy.py: signed local rehearsal, optional explicit testnet deployment, seeding and public manifest.
+- scripts/calibration.py: synthetic random-projection experiment.
+- docs/BIOMETRIC_CALIBRATION.md and docs/CONTRIBUTIONS.md: mathematical analysis and provenance.
 - docs/TOKENOMICS.md and docs/THREAT_MODEL.md: design and explicit limitations.
 
-## Testnet (optional, not executed)
+## Signed deployment rehearsal (no public transactions)
 
-Use disposable test-only keys, separate admin/gate accounts funded with test ETH.
-Set BASE_SEPOLIA_RPC_URL, TESTNET_ADMIN_KEY and TESTNET_GATE_KEY securely in your
-local environment. Never commit them, send them to chat or reuse real wallets.
-Run python scripts/testnet.py after compilation. It checks chain ID 84532 and
-writes a public-address-only deployment manifest. Inspect each contract and role
-in an explorer. The classroom UI remains local; testnet student signing and
-end-to-end testnet UI are not implemented. No deployment is required to run tests.
+    npm run compile
+    python scripts/deploy.py --local --smoke
+    python scripts/calibration.py
+    python -m pytest -q tests veil-python/tests
+
+The rehearsal generates three distinct disposable local signing keys, deploys
+and checks roles, seeds two events and a perk, runs Veil matching and check-ins,
+rejects duplicate rewards and redeems a perk. Local manifest addresses are
+ephemeral, not explorer links. It does not reuse the Streamlit chain.
+
+## Public Base Sepolia (optional, not executed)
+
+Use only disposable test wallets, funded with free test ETH. Copy .env.example
+to .env locally and set separate TESTNET_ADMIN_KEY and TESTNET_GATE_KEY
+(and TESTNET_STUDENT_KEY for --smoke). Never commit or share keys or use real
+wallets. BASE_SEPOLIA_RPC_URL defaults to https://sepolia.base.org. Confirm that
+you have sufficient test ETH for fees. Run the local rehearsal first.
+
+    python scripts/deploy.py --base-sepolia --seed
+
+Optional --smoke also executes synthetic check-ins and redemption on the testnet.
+No public write occurs without the explicit --base-sepolia flag. A manifest
+records addresses, deployment/setup receipts, compiler version, constructor
+arguments and explorer links. A public manifest must be archived before another
+deployment. If a deployment fails before a manifest exists, inspect account
+transaction history before retrying; deployment/setup transactions are not atomic.
+
+For each deployed contract, open its BaseScan address and use Verify & Publish
+with Solidity Standard JSON Input, the exact build/compiler.txt version and
+build/standard-input.json, the manifest's fully qualified source and encoded
+constructor arguments if requested. The compiler exports all dependency sources
+and checks that recompiling the input reproduces creation bytecode. Preserve
+the exact artifacts used for deployment (manifest includes SHA-256 of JSON).
+Explorer verification is manual and separate from successful deployment.
+The UI remains a local simulation, not a testnet frontend.
 
 ## Course defense
 
@@ -77,7 +107,8 @@ security solely because blockchain/encryption are used.
 
 ## Status and acknowledgement
 
-V2 is an AI-assisted implementation based on the team's V1 and project audit.
+V2.1 builds on V1, the tested V2 and the teammate's independent merge.
+See docs/CONTRIBUTIONS.md for provenance and AI-assistance disclosure.
 Students must inspect, run, understand, verify and acknowledge AI assistance per
 the course syllabus. See the threat model before making presentation claims.
 No real campus partnership, biometric performance or public deployment established.

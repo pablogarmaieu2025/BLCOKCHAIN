@@ -41,3 +41,39 @@ def test_duplicate_registrar_enrollment(campus):
         campus.registry.register("sara", campus.outsider)
     with pytest.raises(ValueError):
         campus.registry.register("different", campus.sara)
+
+
+# Adapted from the teammate's independent integration suite (25 Nov 2026).
+def test_right_person_gets_the_tokens(campus):
+    result = campus.scan("marco", "SG debate")
+    assert result.granted and result.student_id == "marco" and result.wallet == campus.marco
+    assert campus.chain.balance(campus.marco) == 100
+    assert campus.chain.balance(campus.sara) == 0
+    assert campus.chain.reputation(campus.marco) == 1
+    assert campus.chain.reputation(campus.sara) == 0
+
+def test_checkin_calldata_contains_only_expected_public_fields(campus):
+    """Specific ABI and literal-data regression, not a general anonymity proof."""
+    from gateway import to_id
+    from web3 import Web3
+    from veil import templates
+    chain = campus.chain
+    credential = campus.matcher._wallets["sara"]
+    result = campus.scan("sara", "SG debate")
+    assert result.granted and result.tx_hash
+    tx = chain.w3.eth.get_transaction(Web3.to_hex(bytes.fromhex(result.tx_hash.removeprefix("0x"))))
+    assert tx["from"] == campus.gate and tx["to"] == chain.checkin.address
+    payload = tx.get("input", tx.get("data"))
+    raw = bytes(payload) if not isinstance(payload, str) else bytes.fromhex(payload.removeprefix("0x"))
+    fn, args = chain.checkin.decode_function_input(Web3.to_hex(raw))
+    assert fn.fn_name == "checkIn"
+    assert args == {"eventId": to_id("SG debate"), "student": campus.sara}
+    assert len(raw) == 4 + 32 + 32
+    assert credential.did.encode() not in raw
+    assert credential.salt not in raw
+    assert credential.ciphertext.data not in raw
+    assert campus.raw["sara"].tobytes() not in raw
+    assert templates.protect(campus.raw["sara"], credential.salt).tobytes() not in raw
+    # Enrollment exposes the random subject key, NOT a biometric credential.
+    assert chain.pass_.functions.studentKey(campus.sara).call() == campus.registry.record_of("sara").key
+    assert chain.pass_.functions.studentKey(campus.sara).call() != Web3.keccak(text=credential.did)
