@@ -51,6 +51,8 @@ class CampusChain:
             receipt = w3.eth.wait_for_transaction_receipt(
                 factory.constructor(*args).transact({"from": roles.admin})
             )
+            if receipt.status != 1 or not receipt.contractAddress:
+                raise RuntimeError(f"Deployment failed: {name}")
             return w3.eth.contract(address=receipt.contractAddress, abi=art["abi"])
 
         p = deploy_one("StudentPass", roles.admin)

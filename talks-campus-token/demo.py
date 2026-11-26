@@ -20,6 +20,7 @@ class DemoCampus:
         for event in self.events:
             self.chain.create_event(event, 100)
         self.perk = "Priority talks ticket"
+        self.perks = [self.perk]
         self.chain.create_perk(self.perk, 200, 50)
 
     def enroll(self, sid, wallet, seed):
