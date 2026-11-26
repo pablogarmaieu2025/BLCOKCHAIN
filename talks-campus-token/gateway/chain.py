@@ -79,11 +79,22 @@ class CampusChain:
         }
 
     def _tx(self, fn, sender: str):
-        return self.w3.eth.wait_for_transaction_receipt(fn.transact({"from": sender}))
+        receipt = self.w3.eth.wait_for_transaction_receipt(fn.transact({"from": sender}))
+        if receipt.status != 1:
+            raise RuntimeError(f"Transaction reverted: {receipt.transactionHash.hex()}")
+        return receipt
 
     # ---------- Student Pass (IE) ----------
-    def issue_pass(self, wallet: str):
-        return self._tx(self.pass_.functions.issue(wallet), self.roles.admin)
+    def issue_pass(self, wallet: str, student_key=None):
+        # Synthetic test default only; real enrollment must pass a random stable key.
+        key = student_key if student_key is not None else Web3.keccak(text=wallet)
+        return self._tx(self.pass_.functions.issue(wallet, key), self.roles.admin)
+
+    def replace_pass(self, old_wallet: str, new_wallet: str):
+        return self._tx(self.pass_.functions.replace(old_wallet, new_wallet), self.roles.admin)
+
+    def recover_balance(self, old_wallet: str, new_wallet: str):
+        return self._tx(self.token.functions.recoverBalance(old_wallet, new_wallet), self.roles.admin)
 
     def revoke_pass(self, wallet: str):
         return self._tx(self.pass_.functions.revoke(wallet), self.roles.admin)
@@ -92,8 +103,11 @@ class CampusChain:
         return self.pass_.functions.isValid(wallet).call()
 
     # ---------- events (student government, talks.) ----------
-    def create_event(self, name: str, reward: int):
-        return self._tx(self.checkin.functions.createEvent(to_id(name), reward), self.roles.admin)
+    def create_event(self, name: str, reward: int, capacity: int = 100, duration: int = 86400):
+        expiry = self.w3.eth.get_block("latest")["timestamp"] + duration
+        receipt = self._tx(self.checkin.functions.createEvent(to_id(name), reward, expiry, capacity), self.roles.admin)
+        self._tx(self.checkin.functions.authorizeGate(to_id(name), self.roles.gate, True), self.roles.admin)
+        return receipt
 
     def already_checked_in(self, event: str, wallet: str) -> bool:
         return self.checkin.functions.checkedIn(to_id(event), wallet).call()
