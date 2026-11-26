@@ -1,6 +1,6 @@
 """Actual Veil adapter + Door + deployed local EVM contracts, synthetic inputs only."""
 import pytest
-from demo import DemoCampus
+from gateway.demo_campus import DemoCampus
 
 @pytest.fixture
 def campus():

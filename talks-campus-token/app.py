@@ -1,6 +1,6 @@
 """Unified classroom UI. Synthetic identities and ephemeral local EVM only."""
 import streamlit as st
-from demo import DemoCampus
+from gateway.demo_campus import DemoCampus
 from gateway import to_id
 
 st.set_page_config(page_title="Veil × talks. | V2", page_icon="🎓", layout="wide")
@@ -12,37 +12,22 @@ if "campus" not in st.session_state:
     st.session_state.history = []
 c = st.session_state.campus
 chain = c.chain
+st.sidebar.markdown("### Try the demo\n1. Scan Sara at SG debate.\n2. Repeat the scan (0 extra TALK).\n3. Scan at Climate talk.\n4. Redeem a priority ticket in Student.\n5. Inspect Evidence.\n6. Revoke Sara in Administrator and try another scan.")
 if st.sidebar.button("Reset local demonstration"):
     del st.session_state.campus
     del st.session_state.history
+    st.session_state.pop("feedback", None)
     st.rerun()
 
 def attempt(action, label):
     try:
         receipt = action()
         st.session_state.history.append((label, receipt.transactionHash.hex()))
-        st.success(label)
+        st.session_state.feedback = ("success", label)
     except Exception as e:
-        st.error(f"Rejected or unavailable ({type(e).__name__})")
+        st.session_state.feedback = ("error", f"Rejected or unavailable ({type(e).__name__})")
 
 student_tab, gate_tab, admin_tab, ledger_tab = st.tabs(["Student", "Event scanner", "Administrator", "Evidence"])
-with student_tab:
-    sid = st.selectbox("Synthetic student", list(c.raw))
-    wallet = c.registry.wallet_of(sid)
-    a,b,d = st.columns(3)
-    a.metric("TALK balance", chain.balance(wallet))
-    b.metric("Reputation", chain.reputation(wallet))
-    d.metric("Student Pass", "Valid" if chain.is_valid(wallet) else "Revoked")
-    st.write("Wallet:", wallet)
-    st.subheader("Available perks")
-    for perk in c.perks:
-        data = chain.perks.functions.perks(to_id(perk)).call()
-        st.write(f"**{perk}** — {data[0]} TALK · {chain.perk_remaining(perk)} remaining")
-        owned = chain.has_perk(perk, wallet)
-        if st.button("Redeem " + perk, disabled=owned or not chain.is_valid(wallet) or not data[3], key="redeem_"+perk):
-            attempt(lambda: chain.unlock_perk(perk, wallet), "Perk redeemed")
-            st.rerun()
-        if owned: st.success("Claimed")
 with gate_tab:
     student = st.selectbox("Synthetic scan", [*c.raw, "unknown"], key="scan_sid")
     event = st.selectbox("Event", ["Door only", *c.events])
@@ -86,6 +71,30 @@ with admin_tab:
                     c.perks.append(name.strip())
                     st.success("Perk created")
                 except Exception as e: st.error(type(e).__name__)
+with student_tab:
+    sid = st.selectbox("Synthetic student", list(c.raw))
+    wallet = c.registry.wallet_of(sid)
+    a,b,d = st.columns(3)
+    a.metric("TALK balance", chain.balance(wallet))
+    b.metric("Reputation", chain.reputation(wallet))
+    d.metric("Student Pass", "Valid" if chain.is_valid(wallet) else "Revoked")
+    st.write("Wallet:", wallet)
+    if "feedback" in st.session_state:
+        kind, message = st.session_state.pop("feedback")
+        (st.success if kind == "success" else st.error)(message)
+    st.subheader("Available perks")
+    for perk in c.perks:
+        data = chain.perks.functions.perks(to_id(perk)).call()
+        st.write(f"**{perk}** — {data[0]} TALK · {chain.perk_remaining(perk)} remaining")
+        owned = chain.has_perk(perk, wallet)
+        affordable = chain.balance(wallet) >= data[0]
+        remaining = chain.perk_remaining(perk)
+        if not owned and not affordable:
+            st.caption(f"Earn {data[0] - chain.balance(wallet)} more TALK to redeem.")
+        if st.button("Redeem " + perk, disabled=owned or not chain.is_valid(wallet) or not data[3] or not affordable or remaining == 0, key="redeem_"+perk):
+            attempt(lambda: chain.unlock_perk(perk, wallet), "Perk redeemed")
+            st.rerun()
+        if owned: st.success("Claimed")
 with ledger_tab:
     minted = chain.token.functions.lifetimeMinted().call()
     outstanding = chain.total_supply()

@@ -22,6 +22,15 @@ Windows: activate .venv using the platform-specific activation script.
 The app is a trusted, ephemeral classroom simulation with synthetic identities.
 Do not upload faces or use real funds. No public deployment is claimed.
 
+## Classroom walkthrough
+
+The CLI and Streamlit each start their own fresh local chain. In the app, open
+Event scanner, select Sara and SG debate, then Authenticate and check in (100 TALK).
+Repeat the same event (0 extra), then scan Climate talk (200 total). Open Student
+and redeem the priority ticket (0 balance, 49 remaining). Evidence shows 200 minted,
+200 burned and 0 outstanding if no other rewards were issued. In Administrator,
+revoke Sara and attempt another scan: no reward. Reset clears this local session.
+
 ## Architecture
 
 Veil synthetic vector -> protected template comparison -> local student registry
@@ -38,7 +47,8 @@ a test environment. An Ethereum signing account is distinct from a Veil wallet.
 - contracts/: StudentPass, CampusToken, EventCheckIn, Perks.
 - gateway/: registrar, transaction wrapper and door. DemoFaceMatcher is a unit test double only.
 - veil-python/veil/: the biometric group's packaged experimental implementation.
-- demo.py: integrated CLI and shared synthetic demo fixture.
+- demo.py: integrated CLI entry point.
+- gateway/demo_campus.py: uniquely named shared synthetic campus fixture.
 - app.py: integrated Student, Event scanner, Administrator and Evidence tabs.
 - tests/: contract and integrated regression suites.
 - veil-python/tests/: biometric and simulated ledger tests.
